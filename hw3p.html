@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<style>
+#info {
+    position: absolute;
+    top: 0px;
+    width: 100%;
+    padding: 15px;
+    text-align: center;
+    color: #ffff00;
+}
+a {
+    color: white;
+}
+#dataShow {
+    position: absolute;
+    bottom: 20px;
+    width: 100%;
+    padding:5px;
+    text-align: center;
+    color: #00ffff;
+}
+body {
+    margin: 0px;
+    overflow:hidden;
+}
+</style>
+</head>
+
+
+<body>
+<script src="http://cdnjs.cloudflare.com/ajax/libs/three.js/r70/three.min.js"></script>
+<div id="info">HW3p
+    <br/> 
+    <a href="javascript:s(0);">bisection</a>
+    <a href="javascript:s(1);">Newton</a>
+    <a href="javascript:s(2);">STOP</a>
+</div>
+<div id="dataShow"></div>
+<script>
+var camera, scene, renderer;
+var mouse = new THREE.Vector2();
+var cameraLeft = -50,
+    cameraRight = 50,
+    cameraTop = 50,
+    cameraBottom = -50,
+    cameraNear = -10,
+    cameraFar = 10;
+
+var leftPt, rightPt; // empty array
+
+var p1, p2, q1, q2, x1, x2, y1, y2;
+//(p1, q1)(p2, q2), (x1, y1)(x2, y2)
+var mesh, mesh2, mesh3, mesh4;
+var line, line2, lineGroup;
+var c0, c1, c2, c3, now = 0;
+var show;
+
+
+
+init();
+animate();
+function s(option){
+   
+    now = option;
+}
+function init() {
+    scene = new THREE.Scene();
+
+    camera = new THREE.OrthographicCamera(cameraLeft, cameraRight, cameraTop, cameraBottom, cameraNear, cameraFar);
+    camera.position.z = 10;
+    scene.add(camera);
+
+    // draw border
+    var material = new THREE.LineBasicMaterial({
+        color: 0x0000ff
+    });
+
+    var geometry = new THREE.Geometry();
+    geometry.vertices.push(
+    new THREE.Vector3(-40, -40, 0),
+    new THREE.Vector3(40, -40, 0),
+    new THREE.Vector3(40, 40, 0),
+    new THREE.Vector3(-40, 40, 0),
+    new THREE.Vector3(-40, -40, 0));
+
+    var border = new THREE.Line(geometry, material);
+    scene.add(border);
+    
+	show = document.getElementById("dataShow");
+    
+    //加橢圓到螢幕
+    var ov = oval();
+    scene.add(ov);
+    renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x888888);
+
+    document.body.appendChild(renderer.domElement);
+    window.addEventListener('resize', onWindowResize, false);
+    window.addEventListener('mousedown', onDocumentMouseDown, false);
+}
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function onDocumentMouseDown(event) {
+
+    //var mesh;
+
+    event.preventDefault();
+    // Normalized Device Coordinate (NDC)
+    // NDC: [-1,1]x[-1,1]
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    console.log(mouse.x + ', ' + mouse.y);
+
+    if (leftPt === undefined) {
+        leftPt = new THREE.Vector2(mouse.x * 50, mouse.y * 50);
+
+        if (p1 === undefined) {
+            //白圓點
+            mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 10), new THREE.MeshBasicMaterial());
+            p1 = leftPt.x;
+            q1 = leftPt.y;
+            mesh.position.set(leftPt.x, leftPt.y, 0);
+            scene.add(mesh);
+        } else if (x1 === undefined) {
+            //紅色圓點
+            mesh2 = new THREE.Mesh(new THREE.CircleGeometry(1, 10), new THREE.MeshBasicMaterial({
+                color: 0xff0000
+            }));
+            x1 = leftPt.x;
+            y1 = leftPt.y;
+            mesh2.position.set(leftPt.x, leftPt.y, 0);
+            scene.add(mesh2);
+        }
+
+
+    } else if (rightPt === undefined) {
+        rightPt = new THREE.Vector2(mouse.x * 50, mouse.y * 50);
+
+        if (p2 === undefined) {
+            //做一個白方形的點
+            mesh3 = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial());
+            p2 = rightPt.x;
+            q2 = rightPt.y;
+            mesh3.position.set(rightPt.x, rightPt.y, 0);
+            scene.add(mesh3);
+        } else if (x2 === undefined) {
+            //紅色方形點
+            mesh4 = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({
+                color: 0xff0000
+            }));
+            x2 = rightPt.x;
+            y2 = rightPt.y;
+            mesh4.position.set(rightPt.x, rightPt.y, 0);
+            scene.add(mesh4);
+        }
+
+    }
+
+    //畫切線
+    if (leftPt !== undefined && rightPt !== undefined) {
+        if (line === undefined) {
+            line = drawTangent();
+            scene.add(line);
+            leftPt = undefined;
+            rightPt = undefined;
+        } else {
+            line2 = drawTangent();
+            scene.add(line2);
+        }
+
+
+    }
+    //有4個點了 畫曲線
+    if (y2 !== undefined) {
+        
+        c0 = new THREE.Vector3(p1, q1, 0);
+        c1 = new THREE.Vector3(p2, q2, 0);
+        c2 = new THREE.Vector3(x1, y1, 0);
+        c3 = new THREE.Vector3(x2, y2, 0);
+
+        drawHermiteCurve(c0, c2, c1.clone().sub(c0), c3.clone().sub(c2), bisection(evaluator, 1e-6, 0, 1));
+        scene.add(lineGroup);
+        scene.remove(line);
+        scene.remove(line2);
+        scene.remove(mesh);
+        scene.remove(mesh2);
+        scene.remove(mesh3);
+        scene.remove(mesh4);
+
+    }
+}
+
+function drawTangent() { //切線
+    var material = new THREE.LineBasicMaterial({
+        color: 0xffff00
+    });
+
+    var geometry = new THREE.Geometry();
+    geometry.vertices.push(
+    new THREE.Vector3(leftPt.x, leftPt.y, 0),
+    new THREE.Vector3(rightPt.x, rightPt.y, 0));
+
+    console.log('add line ...');
+    return new THREE.Line(geometry, material);
+    //scene.add(line);
+
+}
+
+function drawHermiteCurve(p1, p2, t1, t2, s0) { //畫曲線
+	if(lineGroup) scene.remove(lineGroup);
+    lineGroup = new THREE.Object3D();
+    var s, s2, s3, h1, h2, h3, h4;
+    var pt = new THREE.Vector3();
+    var material = new THREE.LineBasicMaterial({
+        color: 0x0000ff
+    });
+
+    var geometry = new THREE.Geometry();
+
+    for (s = 0; s <= 1; s += 0.1) {
+        s2 = s * s;
+        s3 = s2 * s;
+        h1 = 2 * s3 - 3 * s2 + 1;
+        h2 = -2 * s3 + 3 * s2;
+        h3 = s3 - 2 * s2 + s;
+        h4 = s3 - s2;
+
+        pt.set(0, 0, 0);
+        pt.add(p1.clone().multiplyScalar(h1));
+        pt.add(p2.clone().multiplyScalar(h2));
+        pt.add(t1.clone().multiplyScalar(h3));
+        pt.add(t2.clone().multiplyScalar(h4));
+        // pt.addScaledVector(p1, h1);  // no longer supported
+
+        geometry.vertices.push(pt.clone());
+    }
+    lineGroup.add(new THREE.Line(geometry, material));
+
+    s2 = s0 * s0;
+    s3 = s2 * s0;
+    h1 = 2 * s3 - 3 * s2 + 1;
+    h2 = -2 * s3 + 3 * s2;
+    h3 = s3 - 2 * s2 + s0;
+    h4 = s3 - s2;
+
+    pt.set(0, 0, 0);
+    pt.add(p1.clone().multiplyScalar(h1));
+    pt.add(p2.clone().multiplyScalar(h2));
+    pt.add(t1.clone().multiplyScalar(h3));
+    pt.add(t2.clone().multiplyScalar(h4));
+    var aaa = new THREE.Mesh(new THREE.CircleGeometry(1, 10), new THREE.MeshBasicMaterial());
+    aaa.position.set(pt.x, pt.y, 0);
+    lineGroup.add(aaa);
+  //  return lineGroup;
+
+
+    // return new THREE.Line(geometry, material);
+}
+
+function oval() { //畫橢圓
+    var point = new THREE.Vector3();
+    var geometry = new THREE.Geometry();
+    var dq = 2 * Math.PI / 40;
+    for (var i = 0; i <= 40; i++) {
+        point.x = 20 * Math.cos(i * dq);
+        point.y = 10 * Math.sin(i * dq);
+        geometry.vertices.push(point.clone());
+    }
+    return new THREE.Line(geometry, new THREE.LineBasicMaterial());
+}
+/////////////////////////////////////////////////////////////////////////
+
+function evaluator(input, x, dofdx) {
+    var fx, fdx;
+    var x6, x5, x4, x3, x2;
+    fx = (((((input[0] * x + input[1]) * x + input[2]) * x + input[3]) * x + input[4]) * x + input[5]) * x + input[6];
+    if (dofdx !== undefined) {
+        fdx = ((((6 * input[0] * x + 5 * input[1]) * x + 4 * input[2]) * x + 3 * input[3]) * x + 2 * input[4]) * x + input[5];
+        return [fx, fdx];
+    }
+    return fx;
+}
+
+
+function bisection(fun, eps, lo, hi) {
+    var i = 0,
+        fh, fl, fm, xm;
+    var input = coef(c0.x, c0.y, c1.x, c1.y, c2.x, c2.y, c3.x, c3.y);
+    fh = fun(input, hi);
+    fl = fun(input, lo);
+
+    if (fh * fl > 0) return [i, undefined];
+    else if (fh === 0) return [i, hi];
+    else if (fl === 0) return [i, lo];
+
+    while (hi - lo > eps) {
+        i++;
+        xm = (hi + lo) / 2;
+
+
+        fm = fun(input, xm);
+        if (fm === 0) {
+            return [i, xm];
+        } else if (fm * fl < 0) {
+            fh = fm;
+            hi = xm;
+        } else {
+            fl = fm;
+            lo = xm;
+        }
+    }
+    //  console.log("444 :" + (hi+lo)/2);
+    return (hi + lo) / 2;
+}
+/*
+ 取hi和lo的中間值作為下一次的區間上/下限
+ */
+
+function newton(fun, epsilon, x0) {
+    var eps = epsilon || 1e-4;
+    var f, stop = 20, x;
+    var input = coef(c0.x, c0.y, c1.x, c1.y, c2.x, c2.y, c3.x, c3.y);
+
+    for (var i = 0; i < stop; i++) {
+        f = fun(input, x0, 1);
+        x = x0 - f[0] / f[1];
+
+        if (Math.abs(x - x0) < eps) { //變化量少
+            i++;
+            break;
+        }
+        x0 = x;
+    }
+    return x;
+}
+
+/*
+ (y-y0) = m(x-x0)    點斜式
+ (x0, y0) 為已知點(上一次用的點)
+ y0 = f(x0)
+ 要用的下一點為此切線和X軸的交點之X座標
+ => 令y = 0
+ -y0 = m(x-x0)
+ x = (m*x0 - y0)/m
+   = x0 - y0/m
+   = x0 - fx/fdx
+ */
+function coef(p1, q1, p2, q2, x1, y1, x2, y2) {
+
+    var s6, s5, s4, s3, s2, s1, s0;
+
+    s6 = y2 * y2 / 100 - 3 * y1 * y2 / 50 + q2 * y2 / 50 + q1 * y2 / 50 + 9 * y1 * y1 / 100 - 3 * q2 * y1 / 50 - 3 * q1 * y1 / 50 + x2 * x2 / 400 - 3 * x1 * x2 / 200 + p2 * x2 / 200 + p1 * x2 / 200 + 9 * x1 * x1 / 400 - 3 * p2 * x1 / 200 - 3 * p1 * x1 / 200 + q2 * q2 / 100 + q1 * q2 / 50 + q1 * q1 / 100 + p2 * p2 / 400 + p1 * p2 / 200 + p1 * p1 / 400;
+
+    s5 = -y2 * y2 / 50 + 7 * y1 * y2 / 50 - 3 * q2 * y2 / 50 - q1 * y2 / 25 - 6 * y1 * y1 / 25 + q2 * y1 / 5 + 7 * q1 * y1 / 50 - x2 * x2 / 200 + 7 * x1 * x2 / 200 - 3 * p2 * x2 / 200 - p1 * x2 / 100 - 3 * x1 * x1 / 50 + p2 * x1 / 20 + 7 * p1 * x1 / 200 - q2 * q2 / 25 - 3 * q1 * q2 / 50 - q1 * q1 / 50 - p2 * p2 / 100 - 3 * p1 * p2 / 200 - p1 * p1 / 200;
+
+    s4 = y2 * y2 / 100 - 2 * y1 * y2 / 25 + 3 * q2 * y2 / 50 + 4 * y1 * y1 / 25 - 11 * q2 * y1 / 50 - q1 * y1 / 50 + x2 * x2 / 400 - x1 * x2 / 50 + 3 * p2 * x2 / 200 + x1 * x1 / 25 - 11 * p2 * x1 / 200 - p1 * x1 / 200 + 3 * q2 * q2 / 50 + q1 * q2 / 25 - q1 * q1 / 100 + 3 * p2 * p2 / 200 + p1 * p2 / 100 - p1 * p1 / 400;
+
+    s3 = -q2 * y2 / 50 + q1 * y2 / 25 + 2 * q2 * y1 / 25 - 7 * q1 * y1 / 50 - p2 * x2 / 200 + p1 * x2 / 100 + p2 * x1 / 50 - 7 * p1 * x1 / 200 - q2 * q2 / 25 + q1 * q2 / 25 + q1 * q1 / 25 - p2 * p2 / 100 + p1 * p2 / 100 + p1 * p1 / 100;
+    s2 = -q1 * y2 / 50 + 2 * q1 * y1 / 25 - p1 * x2 / 200 + p1 * x1 / 50 + q2 * q2 / 100 - 3 * q1 * q2 / 50 - q1 * q1 / 100 + p2 * p2 / 400 - 3 * p1 * p2 / 200 - p1 * p1 / 400;
+    s1 = q1 * q2 / 50 - q1 * q1 / 50 + p1 * p2 / 200 - p1 * p1 / 200;
+    s0 = q1 * q1 / 100 + p1 * p1 / 400 - 1;
+
+    return [s6, s5, s4, s3, s2, s1, s0];
+
+
+}
+
+//var bi, ne;
+//bi = bisection(evaluator, 1e-6, 0, 1);
+//ne = newton(evaluator, 1e-6, 0.5);
+
+/////////////////////////////////////////////////////////////////////////
+function animate() {
+    if (lineGroup !== undefined && now !== 2) {
+		var bi;
+     
+        c0.applyAxisAngle(new THREE.Vector3(0, 0, 1), 0.05);
+        c1.applyAxisAngle(new THREE.Vector3(0, 0, 1), 0.05);
+        c2.applyAxisAngle(new THREE.Vector3(0, 0, 1), 0.05);
+        c3.applyAxisAngle(new THREE.Vector3(0, 0, 1), 0.05);
+		if(now === 0){
+        	var time = performance.now();
+            bi = bisection(evaluator, 1e-6, 0, 1);
+            var time1 = performance.now();
+            show.innerHTML = 'bisection slove time: '+(time1 - time).toFixed(3);
+        }
+        else if(now === 1){
+            var time = performance.now();
+            bi=newton(evaluator, 1e-6, 0.3);
+            var time1 = performance.now();
+            show.innerHTML = 'Newton slover time: '+(time1 - time).toFixed(3);
+        }
+        
+        
+        scene.remove(lineGroup);
+        drawHermiteCurve(c0, c2, c1.clone().sub(c0), c3.clone().sub(c2), bi);
+        
+        scene.add(lineGroup);
+    }
+    requestAnimationFrame(animate);
+    render();
+}
+
+function render() {
+    renderer.render(scene, camera);
+}
+
+</script>
+
+
+</body>
+</html>
+

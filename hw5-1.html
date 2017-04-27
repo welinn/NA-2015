@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<style>
+#info {
+  position: absolute;
+  top: 0px;
+  width: 100%;
+  padding: 15px;
+  text-align: center;
+  color: #ffff00;
+}
+
+a {
+  color: white;
+}
+
+#dataShow {
+  position: absolute;
+  bottom: 20px;
+  width: 100%;
+  padding: 5px;
+  text-align: center;
+  color: #00ffff;
+}
+
+body {
+  margin: 0px;
+  overflow: hidden;
+}
+
+</style>
+</head>
+
+
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r70/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/2.5.0/math.min.js"></script>
+<div id="info">HW5
+  <br/>
+  <a href="javascript:control(1);">reset</a>
+</div>
+
+<script>
+var camera, scene, renderer, material, geometry;
+var mouse = new THREE.Vector2();
+var cameraLeft = -50,
+  cameraRight = 50,
+  cameraTop = 50,
+  cameraBottom = -50,
+  cameraNear = -10,
+  cameraFar = 10;
+
+var bar = [];
+var pointSet = [], newPoint = [], obbPoint = [];
+var meshSet = [], obb;
+var reset = 0;
+
+
+init();
+animate();
+
+function control(option) { //網頁按鈕訊息接收
+  reset = option;
+}
+
+
+function init() {
+	scene = new THREE.Scene();
+
+	camera = new THREE.OrthographicCamera(cameraLeft, cameraRight, cameraTop, cameraBottom, cameraNear, cameraFar);
+	camera.position.z = 10;
+	scene.add(camera);
+
+
+	material = new THREE.LineBasicMaterial({
+		color: 0x0000ff
+	});
+  
+  
+  addPoint();
+  drawObb();
+
+
+  renderer = new THREE.WebGLRenderer();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x888888);
+
+  document.body.appendChild(renderer.domElement);
+  window.addEventListener('resize', onWindowResize, false);
+  //   window.addEventListener('mousedown', onDocumentMouseDown, false);
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function randomPoint() { //產生亂數 (+-25)
+
+  var ranx, rany;
+
+  for (var i = 0; i < 10; i++) {
+    ranx = Math.random();
+    ranx = ranx * 50 - 25;
+    rany = Math.random();
+    rany = rany * 50 - 25;
+    pointSet[i] = new THREE.Vector2(ranx, rany);
+  }
+}
+
+function addPoint() {
+
+  randomPoint(); //產生亂數
+  for (var i = 0; i < pointSet.length; i++) {
+    var mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 10), new THREE.MeshBasicMaterial());
+    mesh.position.set(pointSet[i].x, pointSet[i].y, 0);
+    meshSet[i] = mesh;
+  }
+  for (i = 0; i < meshSet.length; i++)
+    scene.add(meshSet[i]);
+}
+
+function findBar() { //找到平均值
+
+  var allX = 0, allY = 0;
+  for (var i = 0; i < pointSet.length; i++) {
+    allX += pointSet[i].x;
+    allY += pointSet[i].y;
+  }
+  bar[0] = allX / pointSet.length;
+  bar[1] = allY / pointSet.length;
+}
+
+function xi_xbar() { // Xi - Xbar
+
+  var x, y;
+  findBar();
+  for (var i = 0; i < pointSet.length; i++) {
+    x = pointSet[i].x - bar[0];
+    y = pointSet[i].y - bar[1];
+    newPoint[i] = new THREE.Vector2(x, y);
+  }
+}
+
+/*
+A = [
+[ cov(x,x), cov(x,y) ],
+[ cov(y,x) ,cov(y,y) ]
+];
+*/
+function cov() { //找矩陣 Covariance matrix
+  var x = 0, y = 0, xy = 0;
+  xi_xbar();
+
+  for (var i = 0; i < pointSet.length; i++) {
+    x += newPoint[i].x * newPoint[i].x;
+    xy += newPoint[i].x * newPoint[i].y;
+    y += newPoint[i].y * newPoint[i].y;
+  }
+  x /= pointSet.length;
+  xy /= pointSet.length;
+  y /= pointSet.length;
+  return [
+    [x, xy],
+    [xy, y]
+  ];
+}
+
+function transp(a) { //反矩陣, 依特徵值大小排序
+
+  var ev = numeric.eig(a);    //ev.E 特徵向量
+  var eigen = math.transpose(ev.E.x);   //反矩陣
+  var lambda = [], ret = [];
+  var maxx, m, len = ev.lambda.x.length;
+
+  for(var i = 0; i < len; i++){    //排序
+	  maxx = ev.lambda.x[i];
+	  m = i;
+	  for(var j = i+1; j < len; j++){
+		  if(ev.lambda.x[j] > maxx){
+		  	  maxx = ev.lambda.x[j];
+			  m = j;
+		  }
+	  }
+	  ev.lambda.x[m] = ev.lambda.x[i];
+	  ev.lambda.x[i] = maxx;
+	  lambda[i] = m;
+  }
+  for(i = 0; i < len; i++){
+  	ret[i] = eigen[lambda[i]];
+  }
+  return ret;
+}
+
+function findObb(){
+	var a = cov();   //  Covariance matrix
+  	var eigen = transp(a);   //反矩陣排序
+    var eigenT = math.transpose(eigen);
+	var x, y, xmax = Number.MIN_VALUE, ymax = Number.MIN_VALUE,
+    	xmin = Number.MAX_VALUE, ymin = Number.MAX_VALUE;
+	var newC = [], c = [], size = [];
+	var pca1, pca2;
+
+	for(var i = 0; i < newPoint.length; i++) { //中心位移到原點的新點 乘反矩陣得新座標軸的點
+    	x = eigen[0][0] * newPoint[i].x + eigen[0][1] * newPoint[i].y;
+    	y = eigen[1][0] * newPoint[i].x + eigen[1][1] * newPoint[i].y;
+    	newPoint[i] = new THREE.Vector2(x, y);
+  	}
+	for (i = 0; i < newPoint.length; i++) { //找新座標軸的x,y最大最小值
+		if (xmax < newPoint[i].x) xmax = newPoint[i].x;
+		if (xmin > newPoint[i].x) xmin = newPoint[i].x;
+		if (ymax < newPoint[i].y) ymax = newPoint[i].y;
+		if (ymin > newPoint[i].y) ymin = newPoint[i].y;
+	}
+	newC[0] = (xmax + xmin)/2;
+	newC[1] = (ymax + ymin)/2;
+/*
+原本的值轉到新平面
+ eigen * (X - xb) = newP
+反回來
+ newP * eigenT + xb = X
+*/
+	//(c[0], c[1]) = 新座標軸圖形中心 在原座標軸的座標
+	c = math.add(math.multiply(eigenT, newC), bar);
+	
+	pca1 = eigen[0];
+	pca2 = [eigen[0][1], eigen[0][0]*(-1)];
+
+	size[0] = (xmax - xmin)/2;
+	size[1] = (ymax - ymin)/2;
+
+	var OBB = {
+		center : c,
+		size : size,
+		axes : [pca1, pca2]
+	};
+	findObbPoint(OBB);
+}
+function findObbPoint(OBB){
+/*
+  p1 = c + size[0]*pc1 + size[1]*pc2	
+  p2 = c - size[0]*pc1 + size[1]*pc2
+  p3 = c - size[0]*pc1 - size[1]*pc2
+  p4 = c + size[0]*pc1 - size[1]*pc2
+*/
+	var p;
+
+	p = math.add(OBB.center, math.add(math.multiply(OBB.size[0], OBB.axes[0]), math.multiply(OBB.size[1], OBB.axes[1])));
+	obbPoint[0] = new THREE.Vector3(p[0], p[1]);
+	p = math.add(OBB.center, math.subtract(math.multiply(OBB.size[1], OBB.axes[1]), math.multiply(OBB.size[0], OBB.axes[0])));
+	obbPoint[1] = new THREE.Vector3(p[0], p[1]);
+	p = math.add(OBB.center, math.multiply(-1, math.add(math.multiply(OBB.size[0], OBB.axes[0]), math.multiply(OBB.size[1], OBB.axes[1]))));
+	obbPoint[2] = new THREE.Vector3(p[0], p[1]);
+	p = math.add(OBB.center, (math.subtract(math.multiply(OBB.size[0], OBB.axes[0]), math.multiply(OBB.size[1], OBB.axes[1]))));
+	obbPoint[3] = new THREE.Vector3(p[0], p[1]);
+}
+function drawObb() { //畫框框
+
+  findObb();
+  geometry = new THREE.Geometry();
+  geometry.vertices.push(
+    obbPoint[0], obbPoint[1],
+    obbPoint[2], obbPoint[3], obbPoint[0]);
+  obb = new THREE.Line(geometry, material);
+  scene.add(obb);
+}
+
+function animate() {
+  if (reset === 1) {
+    for (i = 0; i < meshSet.length; i++){
+      scene.remove(meshSet[i]);
+    }
+    scene.remove(obb);
+    addPoint();
+    drawObb();
+    reset = 0;
+  }
+  requestAnimationFrame(animate);
+  render();
+}
+
+function render() {
+  renderer.render(scene, camera);
+}
+
+</script>
+
+
+</body>
+</html>
+

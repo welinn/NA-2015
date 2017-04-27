@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<style>
+#info {
+    position: absolute;
+    top: 0px;
+    width: 100%;
+    padding: 10px;
+    text-align: center;
+    color: #ffff00
+}
+body {
+    overflow: hidden;
+}
+</style>
+</head>
+
+<body>
+
+<div id="info">THREE.JS 2D Template
+    <br/>Left & right click to draw line</div>
+<script src="http://cdnjs.cloudflare.com/ajax/libs/three.js/r70/three.min.js"></script>
+<!-- the following disable the regular right-button click -->
+<script type="text/javascript">
+    document.oncontextmenu = function() {
+        return false;
+    }
+</script>
+
+<script>
+//兩線找交點
+var camera, scene, renderer;
+var mouse = new THREE.Vector2();
+var cameraLeft = -50,
+    cameraRight = 50,
+    cameraTop = 50,
+    cameraBottom = -50,
+    cameraNear = -10,
+    cameraFar = 10;
+var p1, p2, q1, q2, x1, x2, y1, y2;
+
+var leftPt, rightPt; // empty array
+
+init();
+animate();
+
+function init() {
+    scene = new THREE.Scene();
+
+    camera = new THREE.OrthographicCamera(cameraLeft, cameraRight, cameraTop, cameraBottom, cameraNear, cameraFar);
+    camera.position.z = 10;
+    scene.add(camera);
+
+    // draw border
+    var material = new THREE.LineBasicMaterial({
+        color: 0x0000ff
+    });
+
+    var geometry = new THREE.Geometry();
+    geometry.vertices.push(
+    new THREE.Vector3(-40, -40, 0),
+    new THREE.Vector3(40, -40, 0),
+    new THREE.Vector3(40, 40, 0),
+    new THREE.Vector3(-40, 40, 0),
+    new THREE.Vector3(-40, -40, 0));
+
+    var border = new THREE.Line(geometry, material);
+    scene.add(border);
+
+    renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x888888);
+
+    document.body.appendChild(renderer.domElement);
+    window.addEventListener('resize', onWindowResize, false);
+    window.addEventListener('mousedown', onDocumentMouseDown, false);
+}
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function onDocumentMouseDown(event) {
+    event.preventDefault();
+    // Normalized Device Coordinate (NDC)
+    // NDC: [-1,1]x[-1,1]
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    console.log(mouse.x + ', ' + mouse.y);
+
+    if (event.button === 0 && leftPt === undefined) { // left button
+        leftPt = new THREE.Vector2(mouse.x * 50, mouse.y * 50);
+        var mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 10),
+        new THREE.MeshBasicMaterial());
+
+        
+        if(p1 === undefined){
+            p1 = leftPt.x;
+            q1 = leftPt.y;
+        }
+        else if(x1 === undefined){
+            x1 = leftPt.x;
+            y1 = leftPt.y;
+        }
+
+
+        mesh.position.set(leftPt.x, leftPt.y, 0);
+        scene.add(mesh);
+    }
+    else if (event.button === 2 && rightPt === undefined) { // right button
+        rightPt = new THREE.Vector2(mouse.x * 50, mouse.y * 50);
+        var mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 10),
+        new THREE.MeshBasicMaterial({
+            color: 0xff0000
+        }));
+
+        if(p2 === undefined){
+            p2 = rightPt.x;
+            q2 = rightPt.y;
+        }
+        else if(x2 === undefined){
+            x2 = rightPt.x;
+            y2 = rightPt.y;
+        }
+        mesh.position.set(rightPt.x, rightPt.y, 0);
+        scene.add(mesh);
+    }
+
+    // add line if both points are clicked
+    if (leftPt !== undefined && rightPt !== undefined) {
+        var material = new THREE.LineBasicMaterial({
+            color: 0xffff00
+        });
+
+        var geometry = new THREE.Geometry();
+        geometry.vertices.push(
+        new THREE.Vector3(leftPt.x, leftPt.y, 0),
+        new THREE.Vector3(rightPt.x, rightPt.y, 0));
+
+        console.log('add line ...');
+        var line = new THREE.Line(geometry, material);
+        scene.add(line);
+        // reset both points
+        leftPt = undefined;
+        rightPt = undefined;
+    }
+    if(y2 !== undefined) draw();
+}
+
+function draw(){
+    var x, y;
+    var a, b, c, a2, b2, c2;
+    var point = new THREE.Mesh(new THREE.CircleGeometry(1, 10), new THREE.MeshBasicMaterial({color:0x000088}));
+    a = q2 - q1;
+    b = p1 - p2;
+    c = p2*q1 - p1*q2;
+    a2 = y2 - y1;
+    b2 = x1 - x2;
+    c2 = x2*y1 - x1*y2;
+    x = (b2*c - b*c2) / (a2*b - a*b2);
+    y = -(a2*c - a*c2) / (a2*b - a*b2);
+    point.position.set(x, y, 0);
+    scene.add(point);
+    p1 = p2 = q1 = q2 = x1 = x2 = y1 = y2 = undefined;
+}
+function animate() {
+    requestAnimationFrame(animate);
+    render();
+}
+
+function render() {
+    renderer.render(scene, camera);
+}
+
+</script>
+
+
+</body>
+</html>
+

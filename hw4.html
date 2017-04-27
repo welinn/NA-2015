@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<style>
+#info {
+    position: absolute;
+    top: 0px;
+    width: 100%;
+    padding: 15px;
+    text-align: center;
+    color: #ffff00;
+}
+a {
+    color: white;
+}
+#dataShow {
+    position: absolute;
+    bottom: 20px;
+    width: 100%;
+    padding:5px;
+    text-align: center;
+    color: #00ffff;
+}
+body {
+    margin: 0px;
+    overflow:hidden;
+}
+</style>
+</head>
+
+
+<body>
+<script src="http://cdnjs.cloudflare.com/ajax/libs/three.js/r70/three.min.js"></script>
+<div id="info">HW4
+    <br/> 
+      <a href="javascript:control(0);">Euler</a>
+      <a href="javascript:control(1);">midpoint</a>
+      <a href="javascript:control(2);">RK4</a>
+</div>
+<script>
+var camera, scene, renderer;
+var mouse = new THREE.Vector2();
+var cameraLeft = -50,
+    cameraRight = 50,
+    cameraTop = 50,
+    cameraBottom = -50,
+    cameraNear = -10,
+    cameraFar = 10;
+var mesh, line;
+var t1, t2, check = 0, now = 0, mousePt, dt = 0.0163, F = 0, f = 0;
+
+var m = 2, k = 6, c = .5;   //質量、彈簧係數、阻尼係數
+var x = [];    //x[0] = 位置, x[1] = 速度
+
+init();
+animate();
+
+function control(option){  //網頁按鈕訊息接收
+  now = option;
+  x[0] = 20;   //初始位置
+  x[1] = 0;    //初速度
+  check = 0;
+  t1 = t2 = undefined;
+}
+
+function init() {
+
+  x.push (20);   //初始位置
+  x.push (0);    //初速度
+
+  scene = new THREE.Scene();
+  camera = new THREE.OrthographicCamera(cameraLeft, cameraRight, cameraTop, cameraBottom, cameraNear, cameraFar);
+  camera.position.z = 10;
+  scene.add(camera);
+
+  // draw border
+  var material = new THREE.LineBasicMaterial({
+    color: 0x0000ff
+  });
+
+  var geometry = new THREE.Geometry();
+  geometry.vertices.push(
+      new THREE.Vector3(-40, -40, 0),
+      new THREE.Vector3(40, -40, 0),
+      new THREE.Vector3(40, 40, 0),
+      new THREE.Vector3(-40, 40, 0),
+      new THREE.Vector3(-40, -40, 0));
+
+  var border = new THREE.Line(geometry, material);
+  scene.add(border);
+
+  //加要在上面運動的線
+  var material2 = new THREE.LineBasicMaterial({
+    color: 0xffff00
+  });
+  var geometry2 = new THREE.Geometry();
+  geometry2.vertices.push(
+      new THREE.Vector3(-20, 0, 0),
+      new THREE.Vector3(20, 0, 0));
+  scene.add(new THREE.Line(geometry2, material2));
+
+
+  renderer = new THREE.WebGLRenderer();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x888888);
+
+  document.body.appendChild(renderer.domElement);
+  window.addEventListener('resize', onWindowResize, false);
+  window.addEventListener('mousedown', onDocumentMouseDown, false);
+  window.addEventListener('mouseup', onDocumentMouseUp, false);
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function onDocumentMouseDown(event) {     //滑鼠點下去
+
+  event.preventDefault();
+  // Normalized Device Coordinate (NDC)
+  // NDC: [-1,1]x[-1,1]
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  mousePt = new THREE.Vector2(mouse.x * 50, mouse.y * 50);
+  f = 1;
+
+}
+function onDocumentMouseUp(event) {     //滑鼠放開
+
+  event.preventDefault();
+  F = 0;
+  f = 0;
+
+}
+function computeF(){
+
+  var a1, a2;
+  a1 = mousePt.x - x[0];
+  a2 = mousePt.y;
+  a1 *= a1;
+  a2 *= a2;
+  a1 += a2;
+  a1 =  Math.sqrt(a1) * k;
+  if(mousePt.x < x[0]) a1 *= (-1);
+  F = a1;
+}
+//F - cx' - kx = ma
+//算速度 & 加速度 => f(x, y)
+function deriv (x) {
+  var ff = [];
+  ff.push (x[1]);                  // x' = v;
+  ff.push ((F - c*x[1] - k*x[0])/m);  // v' = 1/m *(F -cx' -kx)
+  return ff;           // ff[0] = 速度, ff[1] = 加速度
+}
+
+// v * dt = 位移
+// a * dt = v
+// Euler's method, y(x + △x) = y(x) + f(x, y)△x
+//速度 & 加速度  =>  變率(位移 & 速度變化)
+function ODESolver(x, dt) {
+  var n = x.length;
+  var f = deriv(x);
+  for (var i = 0; i < n; i++) {
+    x[i] += f[i] * dt;
+  }
+}
+
+//中點 midpoint method
+function ODEmidpoint(x, dt) {
+  var n = x.length, mid = [];
+  var f = deriv(x);
+
+  for(var i = 0; i < n; i++){
+    mid[i] = x[i] + f[i]*(dt/2);
+  }
+  f = deriv(mid);
+  for(var i = 0; i < n; i++){
+    x[i] += f[i] * dt;
+  }
+}
+
+//Runge-Kutta 4th order
+function ODE4th(x, dt) {
+  var n = x.length;
+  var k1 = deriv(x);
+  var k2, k3, k4, tmp = [];
+  for(i = 0; i < n; i++){
+    tmp[i] = x[i] + dt*k1[i]/2;
+  }
+  k2 = deriv(tmp);
+  for(i = 0; i < n; i++){
+    tmp[i] = x[i] + dt*k2[i]/2;
+  }
+  k3 = deriv(tmp);
+  for(i = 0; i < n; i++){
+    tmp[i] = x[i] + dt*k3[i];
+  }
+  k4 = deriv(tmp);
+
+  for(i = 0; i < n; i++){
+    x[i] += dt*(k1[i] + 2*k2[i] + 2*k3[i] + k4[i])/6;
+  }
+
+}
+function animate() {
+
+  requestAnimationFrame(animate);
+  render();
+
+  if(line) scene.remove(line);
+  if(f === 1){
+    computeF();
+    var linemat = new THREE.LineBasicMaterial({
+      color: 0xffffff
+    });
+    var tmp = new THREE.Geometry();
+    tmp.vertices.push(new THREE.Vector3(mousePt.x, mousePt.y, 0), new THREE.Vector3(x[0], 0, 0));
+    line = new THREE.Line(tmp, linemat)
+    scene.add(line);
+  }
+  
+  var d = new Date();
+  if(mesh)scene.remove(mesh);
+  if(now === 0){
+    if(x[0] <= 0 && check === 0){
+      t1 = d.getTime();
+      check++;
+    }
+    ODESolver (x,dt);
+    if(x[0] >= 0 && check === 1){
+      t2 = d.getTime();
+      check++;
+    }
+
+  }
+  else if(now === 1){
+    if(x[0] <= 0 && check === 0){
+      t1 = d.getTime();
+      check++;
+    }
+    ODEmidpoint(x,dt);
+    if(x[0] >= 0 && check === 1){
+      t2 = d.getTime();
+      check++;
+    }
+  }
+  else{
+    if(x[0] <= 0 && check === 0){
+      t1 = d.getTime();
+      check++;
+    }
+    ODE4th(x,dt);
+    if(x[0] >= 0 && check === 1){
+      t2 = d.getTime();
+      check++;
+    }
+  }
+  if(t2){
+    if(now === 0) console.log("Euler : " + (t2-t1)*2 + "ms");
+    else if(now === 1) console.log("midpoint : " + (t2-t1)*2 + "ms");
+    else console.log("RK4 : " + (t2-t1)*2 + "ms");
+    t1 = t2 = undefined;
+    check = 0;
+  }
+  mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 10), new THREE.MeshBasicMaterial());
+  mesh.position.set(x[0], 0, 0);
+  scene.add(mesh);
+
+}
+
+function render() {
+  renderer.render(scene, camera);
+}
+
+</script>
+
+
+</body>
+</html>
+
